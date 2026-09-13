@@ -111,6 +111,20 @@
   .plan-card span{color:var(--dim);font-size:var(--small);text-align:right;}
   .plan-card.sug span{color:var(--act);font-weight:700;}
   .plan-card:active{background:#111;}
+  .tr{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:2px solid var(--line);gap:10px;}
+  .tr:active{background:#111;}
+  .tr .nm{font-size:var(--mid);font-weight:800;flex:1;}
+  .tr .nm small{display:block;color:var(--dim);font-size:var(--small);font-weight:600;}
+  .tr .kg{font-size:42px;font-weight:900;letter-spacing:-1px;line-height:1;flex:none;}
+  .tr .kg small{font-size:var(--small);color:var(--dim);font-weight:700;letter-spacing:0;}
+  .tr .ar{font-size:36px;font-weight:900;width:44px;text-align:center;flex:none;}
+  .up{color:#4cd964;} .dn{color:var(--danger);} .eq{color:var(--dim);}
+  .kpi{display:flex;gap:10px;margin:8px 0 14px;}
+  .kpi div{flex:1;border:3px solid var(--line);border-radius:18px;padding:10px 12px;text-align:center;}
+  .kpi b{display:block;font-size:44px;font-weight:900;letter-spacing:-1px;line-height:1.05;}
+  .kpi span{font-size:var(--small);color:var(--dim);font-weight:700;}
+  .kpi .d{font-size:var(--mid);font-weight:800;display:block;margin-top:2px;}
+  .chart{width:100%;height:auto;margin:6px 0 10px;display:block;}
   @media (prefers-reduced-motion: reduce){ *{transition:none!important;} }
 </style>
 </head>
@@ -147,9 +161,19 @@
 
   <!-- HISTORY -->
   <section class="screen" id="s-hist">
-    <h1>Historie</h1>
+    <div class="segs" id="hist-segs">
+      <button id="hs-list" class="on" onclick="histMode('list')">Tréninky</button>
+      <button id="hs-trend" onclick="histMode('trend')">Trendy</button>
+    </div>
     <div id="hist-list"></div>
+    <div id="trend-list" style="display:none"></div>
     <button class="btn ghost sm" onclick="exportCsv()">Export do tabulky (CSV)</button>
+  </section>
+
+  <!-- TREND DETAIL -->
+  <section class="screen" id="s-trend">
+    <div class="top"><button onclick="go('hist')">‹ Trendy</button><span></span></div>
+    <div id="trend-detail"></div>
   </section>
 
   <!-- WORKOUT DETAIL -->
@@ -261,14 +285,16 @@ const store={
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function defaultPlans(){ return [
   {id:uid(),name:'Den A',stations:[
-    {id:uid(),name:'Chest press',sets:3,w:40,r:10,note:''},
-    {id:uid(),name:'Shoulder press',sets:3,w:30,r:10,note:''},
-    {id:uid(),name:'Triceps extension',sets:3,w:30,r:12,note:''},
-    {id:uid(),name:'Leg press',sets:3,w:100,r:12,note:''},
-    {id:uid(),name:'Abdominal',sets:3,w:40,r:15,note:''}]},
+    {id:uid(),name:'Chest press',sets:3,w:57.5,r:12,note:''},
+    {id:uid(),name:'Shoulder press',sets:3,w:40,r:12,note:''},
+    {id:uid(),name:'Triceps extension',sets:3,w:25,r:12,note:''},
+    {id:uid(),name:'Leg press',sets:3,w:75,r:12,note:''},
+    {id:uid(),name:'Glute machine',sets:3,w:40,r:12,note:''},
+    {id:uid(),name:'Abdominal',sets:3,w:50,r:15,note:''}]},
   {id:uid(),name:'Den B',stations:[
     {id:uid(),name:'Lat pulldown',sets:3,w:50,r:10,note:''},
     {id:uid(),name:'Seated row',sets:3,w:50,r:10,note:''},
+    {id:uid(),name:'Rowing torso',sets:3,w:25,r:15,note:''},
     {id:uid(),name:'Arm curl',sets:3,w:30,r:12,note:''},
     {id:uid(),name:'Leg curl',sets:3,w:45,r:12,note:''},
     {id:uid(),name:'Leg extension',sets:3,w:45,r:12,note:''}]}
@@ -287,6 +313,16 @@ function migrate(d){
   }
   d.plans=d.plans||[]; d.workouts=d.workouts||[]; d.settings=Object.assign({rest:90,step:2.5},d.settings||{});
   if(d.current && !d.current.planName) d.current.planName='Trénink';
+  /* one-time update 2026-09: add Glute machine to Den A, Rowing torso to Den B */
+  if(!d.settings.patch1){
+    const addAfter=(planName,afterName,st)=>{ const pl=d.plans.find(x=>x.name===planName); if(!pl) return;
+      if(pl.stations.some(x=>x.name.toLowerCase()===st.name.toLowerCase())) return;
+      const i=pl.stations.findIndex(x=>x.name.toLowerCase()===afterName.toLowerCase());
+      pl.stations.splice(i<0?pl.stations.length:i+1,0,Object.assign({id:uid()},st)); };
+    addAfter('Den A','Leg press',{name:'Glute machine',sets:3,w:40,r:12,note:''});
+    addAfter('Den B','Seated row',{name:'Rowing torso',sets:3,w:25,r:15,note:''});
+    d.settings.patch1=true;
+  }
   return d;
 }
 
@@ -309,10 +345,10 @@ function go(s){
   document.querySelectorAll('.screen').forEach(e=>e.classList.remove('on'));
   document.getElementById('s-'+s).classList.add('on');
   document.querySelectorAll('.bar button').forEach(b=>b.classList.remove('on'));
-  const map={home:'b-home',work:'b-work',hist:'b-hist',detail:'b-hist',plan:'b-plan'};
+  const map={home:'b-home',work:'b-work',hist:'b-hist',detail:'b-hist',trend:'b-hist',plan:'b-plan'};
   document.getElementById(map[s]).classList.add('on');
   document.getElementById('b-work').classList.toggle('live',!!D.current);
-  if(s==='home')renderHome(); if(s==='work')renderWork(); if(s==='hist')renderHist(); if(s==='plan')renderPlan();
+  if(s==='home')renderHome(); if(s==='work')renderWork(); if(s==='hist')renderHist(); if(s==='trend')renderTrend(); if(s==='plan')renderPlan();
   window.scrollTo(0,0);
 }
 function goWork(){ if(D.current) go('work'); else { toast('Vyberte plán a začněte trénink'); go('home'); } }
@@ -415,7 +451,7 @@ function renderWork(){
   let prev='<span class="dim">Poprvé na tomto stroji</span>', hint='';
   if(last){
     prev=`Minule (${fmtDate(last.date)}): <b>${last.sets.map(s=>`${fmtW(s.w)}×${s.r}`).join(', ')}</b>`;
-    if(last.sets.length>=st.sets.length && last.sets.every(s=>s.r>=st.target)) hint=` · zkuste <b>${fmtW(last.sets[0].w+D.settings.step)} kg</b>`;
+    if(last.sets.length>=st.sets.length && last.sets.every(s=>s.r>=st.target)) hint=` · zkuste <b>${fmtW(Math.max(...last.sets.map(x=>x.w))+D.settings.step)} kg</b>`;
   }
   document.getElementById('w-card').innerHTML=`
     <div class="st-name">${esc(st.name)}</div>
@@ -500,8 +536,11 @@ function stopTimer(){ clearInterval(timerInt); timerInt=null; document.getElemen
 
 /* ---------- HISTORY ---------- */
 function renderHist(){
-  const h=[...D.workouts].reverse();
-  document.getElementById('hist-list').innerHTML=h.length?h.map(histRow).join(''):'<p class="dim">Zatím žádný trénink.</p>';
+  const list=ui.histMode==='list';
+  document.getElementById('hs-list').classList.toggle('on',list); document.getElementById('hs-trend').classList.toggle('on',!list);
+  document.getElementById('hist-list').style.display=list?'':'none'; document.getElementById('trend-list').style.display=list?'none':'';
+  if(list){ const h=[...D.workouts].reverse(); document.getElementById('hist-list').innerHTML=h.length?h.map(histRow).join(''):'<p class="dim">Zatím žádný trénink.</p>'; }
+  else renderTrendList();
 }
 function openDetail(id){
   ui.detailId=id; const w=D.workouts.find(x=>x.id===id); if(!w)return;
@@ -572,6 +611,60 @@ async function deleteStation(){
 async function resetAll(){
   const v=await ask('Smazat plány i celou historii?',[{label:'Smazat vše',cls:'warn',value:true},{label:'Zpět',value:false}],'Tohle nejde vrátit.');
   if(!v)return; D={plans:defaultPlans(),workouts:[],current:null,settings:{rest:90,step:2.5}}; ui.planId=D.plans[0].id; stopTimer(); await save(); go('home');
+}
+
+/* ---------- TRENDS ---------- */
+ui.histMode='list'; ui.trendName=null; ui.trendMetric='max';
+function histMode(m){ ui.histMode=m; renderHist(); }
+function sessionsFor(name){
+  const out=[];
+  for(const w of D.workouts){
+    const st=w.stations.find(x=>x.name===name); if(!st) continue;
+    const d=st.sets.filter(z=>z.done); if(!d.length) continue;
+    out.push({date:w.date,max:Math.max(...d.map(z=>z.w)),vol:d.reduce((a,z)=>a+z.w*z.r,0),reps:d.reduce((a,z)=>a+z.r,0),sets:d});
+  }
+  return out;
+}
+function stationNames(){ const seen=new Set(), out=[]; for(const w of D.workouts) for(const st of w.stations) if(st.sets.some(z=>z.done)&&!seen.has(st.name)){ seen.add(st.name); out.push(st.name); } return out; }
+const arrow=(a,b)=>a>b?'<span class="ar up">▲</span>':a<b?'<span class="ar dn">▼</span>':'<span class="ar eq">=</span>';
+function renderTrendList(){
+  const names=stationNames();
+  if(!names.length){ document.getElementById('trend-list').innerHTML='<p class="dim">Trendy se objeví po prvním uloženém tréninku.</p>'; return; }
+  document.getElementById('trend-list').innerHTML='<p class="dim" style="font-size:var(--small)">Poslední nejvyšší váha a změna proti předchozí návštěvě.</p>'+names.map(n=>{
+    const ss=sessionsFor(n); const l=ss[ss.length-1], p=ss[ss.length-2];
+    return `<div class="tr" onclick="openTrend('${esc(n).replace(/'/g,"\\'")}')">
+      <div class="nm">${esc(n)}<small>${ss.length}× · naposledy ${fmtDate(l.date)}</small></div>
+      <div class="kg">${fmtW(l.max)}<small> kg</small></div>
+      ${p?arrow(l.max,p.max):'<span class="ar eq">·</span>'}</div>`; }).join('');
+}
+function openTrend(name){ ui.trendName=name; go('trend'); }
+function setMetric(m){ ui.trendMetric=m; renderTrend(); }
+function renderTrend(){
+  const n=ui.trendName; const ss=sessionsFor(n); if(!ss.length){ go('hist'); return; }
+  const l=ss[ss.length-1], p=ss[ss.length-2];
+  const delta=(k,unit)=>p?`<span class="d ${l[k]>p[k]?'up':l[k]<p[k]?'dn':'eq'}">${l[k]>p[k]?'▲':l[k]<p[k]?'▼':'='} ${fmtW(Math.abs(l[k]-p[k]))}${unit}</span>`:'<span class="d eq">první</span>';
+  const m=ui.trendMetric;
+  document.getElementById('trend-detail').innerHTML=`<h1>${esc(n)}</h1>
+    <div class="kpi">
+      <div><b>${fmtW(l.max)}</b><span>kg max</span>${delta('max',' kg')}</div>
+      <div><b>${Math.round(l.vol)}</b><span>objem kg</span>${delta('vol','')}</div>
+    </div>
+    <div class="segs"><button class="${m==='max'?'on':''}" onclick="setMetric('max')">Váha</button><button class="${m==='vol'?'on':''}" onclick="setMetric('vol')">Objem</button></div>
+    ${chartSvg(ss.slice(-8),m)}
+    <h2>Návštěvy</h2>`+[...ss].reverse().map(x=>`<div class="li"><b>${fmtDate(x.date)}</b><span class="r">${x.sets.map(z=>`${fmtW(z.w)}×${z.r}`).join(', ')}</span></div>`).join('');
+}
+function chartSvg(ss,m){
+  const W=360,H=210,pl=14,pr=14,pt=36,pb=40; const vals=ss.map(x=>x[m]);
+  let lo=Math.min(...vals), hi=Math.max(...vals); if(hi===lo){ hi+=1; lo-=1; } const pad=(hi-lo)*0.15; lo-=pad; hi+=pad;
+  const n=ss.length; const X=i=>n===1?W/2:pl+i*(W-pl-pr)/(n-1); const Y=v=>pt+(hi-v)*(H-pt-pb)/(hi-lo);
+  const fm=v=>m==='max'?fmtW(v):String(Math.round(v));
+  const pts=vals.map((v,i)=>`${X(i)},${Y(v)}`).join(' ');
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="${pts}" fill="none" stroke="#3d8bff" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+    ${vals.map((v,i)=>`<circle cx="${X(i)}" cy="${Y(v)}" r="7" fill="${i===n-1?'#ffb020':'#3d8bff'}"/>
+      <text x="${X(i)}" y="${Y(v)-14}" text-anchor="middle" font-size="20" font-weight="800" fill="#fff">${fm(v)}</text>
+      <text x="${X(i)}" y="${H-12}" text-anchor="middle" font-size="15" font-weight="700" fill="#8a8a8a">${new Date(ss[i].date).toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'})}</text>`).join('')}
+  </svg>`;
 }
 
 /* ---------- EXPORT ---------- */
